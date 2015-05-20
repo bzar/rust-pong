@@ -1,0 +1,29 @@
+[package]
+
+name = "rust-pong"
+version = "0.0.0"
+authors = [
+    "bzar <bzar@bzar.fi>"
+]
+
+[dependencies]
+rand = "0.3"
+
+[[bin]]
+name = "rust-pong"
+
+[dependencies.cgmath]
+git = "https://github.com/bjz/cgmath-rs.git"
+
+[dependencies.piston]
+git = "https://github.com/PistonDevelopers/piston.git"
+
+[dependencies.piston2d-graphics]
+git = "https://github.com/PistonDevelopers/graphics.git"
+
+[dependencies.pistoncore-glutin_window]
+git = "https://github.com/PistonDevelopers/glutin_window.git"
+
+[dependencies.piston2d-opengl_graphics]
+git = "https://github.com/PistonDevelopers/opengl_graphics.git"
+
