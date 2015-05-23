@@ -16,7 +16,10 @@ use cgmath::{ Vector2, Vector, EuclideanVector };
 
 const AREA_WIDTH: f64 = 200.0;
 const AREA_HEIGHT: f64 = 200.0;
+const PADDLE_WIDTH: f64 = 16.0;
+const PADDLE_HEIGHT: f64 = 48.0;
 const PADDLE_SPEED: f64 = 50.0;
+const BALL_SIZE: f64 = 16.0;
 const BALL_START_SPEED: f64 = 40.0;
 const BALL_SPEED_INCREASE: f64 = 5.0;
 
@@ -87,7 +90,7 @@ impl Ball {
     fn reset(&mut self) {
         use rand::Rand;
         let mut rng = rand::thread_rng();
-        self.rect.center = Vector2 { x: 100.0, y: 100.0 };
+        self.rect.center = Vector2 { x: AREA_WIDTH/2.0, y: AREA_HEIGHT/2.0 };
         self.speed = BALL_START_SPEED;
         let dy = f64::rand(&mut rng) - 0.5;
         let dx = if bool::rand(&mut rng) { -0.5 } else { 0.5 };
@@ -117,7 +120,7 @@ impl <'a>App<'a> {
             text.draw(&left_score_string, character_cache,
                       default_draw_state(), c.transform.trans(5.0, 20.0), gl);
             text.draw(&right_score_string, character_cache,
-                      default_draw_state(), c.transform.trans(180.0, 20.0), gl);
+                      default_draw_state(), c.transform.trans(AREA_WIDTH - 20.0, 20.0), gl);
         });
 
     }
@@ -198,18 +201,20 @@ fn main() {
 
     if let Ok(glyph_cache) = GlyphCache::new(Path::new(FONT_PATH)) {
         let left = Paddle { 
-            rect: Rectangle::new([16.0, AREA_HEIGHT/2.0, 8.0, 24.0]), 
+            rect: Rectangle::new([PADDLE_WIDTH, AREA_HEIGHT/2.0, 
+                                 PADDLE_WIDTH/2.0, PADDLE_HEIGHT/2.0]), 
             v: Vector2 { x: 0.0, y: 0.0 } 
         };
         let right = Paddle { 
-            rect: Rectangle::new([AREA_WIDTH - 16.0, AREA_HEIGHT/2.0, 8.0, 24.0]), 
+            rect: Rectangle::new([AREA_WIDTH - PADDLE_WIDTH, AREA_HEIGHT/2.0, 
+                                 PADDLE_WIDTH/2.0, PADDLE_HEIGHT/2.0]), 
             v: Vector2 { x: 0.0, y: 0.0 } 
         };
 
         let mut app = App {
             gl: GlGraphics::new(opengl),
             glyph_cache: glyph_cache,
-            ball: Ball::new(8.0),
+            ball: Ball::new(BALL_SIZE/2.0),
             left: left,
             right: right,
             left_score: 0,
