@@ -3,6 +3,7 @@ extern crate graphics;
 extern crate glutin_window;
 extern crate opengl_graphics;
 extern crate rand;
+extern crate cgmath;
 
 use piston::window::WindowSettings;
 use piston::event::*;
@@ -11,27 +12,52 @@ use opengl_graphics::{ GlGraphics, OpenGL };
 use opengl_graphics::glyph_cache::GlyphCache;
 use piston::input::{ Button, Key };
 use std::path::Path;
+use cgmath::{ Vector2, Vector, EuclideanVector };
 
+const AREA_WIDTH: f64 = 200.0;
+const AREA_HEIGHT: f64 = 200.0;
 const PADDLE_SPEED: f64 = 50.0;
 const BALL_START_SPEED: f64 = 40.0;
 const BALL_SPEED_INCREASE: f64 = 5.0;
 
-type Rectangle = [f64; 4]; // position and extents
+const FONT_PATH: &'static str = "ttf/DejaVuSans.ttf";
 
-fn intersects(a: &Rectangle, b: &Rectangle) -> bool {
-    let dx =  if a[0] < b[0] { b[0] - a[0] } else { a[0] - b[0] };
-    let dy = if a[1] < b[1] { b[1] - a[1] } else { a[1] - b[1] };
-    return dx < a[2] + b[2] && dy < a[3] + b[3];
+const BACKGROUND_COLOR: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
+const PADDLE_COLOR: [f32; 4] = [0.8, 0.8, 0.8, 1.0];
+const BALL_COLOR: [f32; 4] = [0.9, 0.9, 0.9, 1.0];
+const TEXT_COLOR: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
+
+struct Rectangle {
+    center: Vector2<f64>,
+    extent: Vector2<f64>
+}
+
+impl Rectangle {
+    fn new(vals: [f64; 4]) -> Rectangle {
+        return Rectangle {
+            center: Vector2::new(vals[0], vals[1]),
+            extent: Vector2::new(vals[2], vals[3])
+        };
+    }
+
+    fn as_array(&self) -> [f64; 4] {
+        return [self.center.x, self.center.y, self.extent.x, self.extent.y];
+    }
+    fn intersects(&self, other: &Rectangle) -> bool{
+        let delta = self.center - other.center;
+        let size = self.extent + other.extent;
+        return delta.x.abs() <= size.x && delta.y.abs() <= size.y;
+    }
 }
 
 struct Paddle {
     rect: Rectangle,
-    vy: f64
+    v: Vector2<f64>
 }
 
 struct Ball {
     rect: Rectangle,
-    v: [f64; 2],
+    v: Vector2<f64>,
     speed: f64
 }
 
@@ -47,25 +73,25 @@ pub struct App<'a> {
 
 impl Ball {
     fn new(size: f64) -> Ball {
-        return Ball { rect: [0.0, 0.0, size, size], v: [0.0, 0.0], speed: 0.0 };
+        return Ball { 
+            rect: Rectangle::new([0.0, 0.0, size, size]), 
+            v: Vector2 {x: 0.0, y: 0.0}, 
+            speed: 0.0 
+        };
     }
 
-    fn set_direction(&mut self, dx: f64, dy: f64) {
-        let nx = dx / (dx * dx + dy * dy).sqrt();
-        let ny = dy / (dx * dx + dy * dy).sqrt();
-        self.v[0] = nx * self.speed;
-        self.v[1] = ny * self.speed;
+    fn set_direction(&mut self, d: &Vector2<f64>) {
+        self.v = d.normalize_to(self.speed);
     }
 
     fn reset(&mut self) {
         use rand::Rand;
         let mut rng = rand::thread_rng();
-        self.rect[0] = 100.0;
-        self.rect[1] = 100.0;
+        self.rect.center = Vector2 { x: 100.0, y: 100.0 };
         self.speed = BALL_START_SPEED;
         let dy = f64::rand(&mut rng) - 0.5;
-        let dx = (f64::rand(&mut rng) - 0.5) * 4.0;
-        self.set_direction(dx, dy);
+        let dx = if bool::rand(&mut rng) { -0.5 } else { 0.5 };
+        self.set_direction(&Vector2 { x: dx, y: dy });
     }
 
 }
@@ -73,14 +99,9 @@ impl <'a>App<'a> {
     fn render(&mut self, args: &RenderArgs) {
         use graphics::*;
 
-        const BACKGROUND_COLOR: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
-        const PADDLE_COLOR: [f32; 4] = [0.8, 0.8, 0.8, 1.0];
-        const BALL_COLOR: [f32; 4] = [0.9, 0.9, 0.9, 1.0];
-        const TEXT_COLOR: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
-
-        let ball = rectangle::centered(self.ball.rect);
-        let left = rectangle::centered(self.left.rect);
-        let right = rectangle::centered(self.right.rect);
+        let ball = rectangle::centered(self.ball.rect.as_array());
+        let left = rectangle::centered(self.left.rect.as_array());
+        let right = rectangle::centered(self.right.rect.as_array());
         let character_cache = &mut self.glyph_cache;
         let left_score_string = self.left_score.to_string();
         let right_score_string = self.right_score.to_string();
@@ -102,35 +123,36 @@ impl <'a>App<'a> {
     }
 
     fn update(&mut self, args: &UpdateArgs) {
-        self.left.rect[1] += self.left.vy * args.dt;
-        self.right.rect[1] += self.right.vy * args.dt;
-        self.ball.rect[0] += self.ball.v[0] * args.dt;
-        self.ball.rect[1] += self.ball.v[1] * args.dt;
+        self.left.rect.center.add_self_v(&self.left.v.mul_s(args.dt));
+        self.right.rect.center.add_self_v(&self.right.v.mul_s(args.dt));
+        self.ball.rect.center.add_self_v(&self.ball.v.mul_s(args.dt));
 
-        self.left.rect[1] = self.left.rect[3].max(self.left.rect[1].min(200.0 - self.left.rect[3]));
-        self.right.rect[1] = self.right.rect[3].max(self.right.rect[1].min(200.0 - self.right.rect[3]));
+        fn clamp_rect_y(rect: &Rectangle, min: f64, max: f64) -> f64 {
+            return (rect.extent.y + min).max(rect.center.y.min(max - rect.extent.y));
+        }
+        self.left.rect.center.y = clamp_rect_y(&self.left.rect, 0.0, AREA_HEIGHT);
+        self.right.rect.center.y = clamp_rect_y(&self.right.rect, 0.0, AREA_HEIGHT);
 
         fn paddle_bounce(ball: &mut Ball, paddle: &Paddle) {
-            if intersects(&paddle.rect, &ball.rect) {
-                let dx = ball.rect[0] - paddle.rect[0];
-                let dy = ball.rect[1] - paddle.rect[1];
+            if ball.rect.intersects(&paddle.rect) {
+                let d = ball.rect.center - paddle.rect.center;
                 ball.speed += BALL_SPEED_INCREASE;
-                ball.set_direction(dx, dy);
+                ball.set_direction(&d);
             }
         }
 
         paddle_bounce(&mut self.ball, &self.left);
         paddle_bounce(&mut self.ball, &self.right);
 
-        let hit_ceiling = self.ball.rect[1] - self.ball.rect[3] < 0.0;
-        let hit_floor = self.ball.rect[1] + self.ball.rect[3] > 200.0;
+        let hit_ceiling = self.ball.rect.center.y - self.ball.rect.extent.y < 0.0;
+        let hit_floor = self.ball.rect.center.y + self.ball.rect.extent.y > AREA_HEIGHT;
 
         if hit_ceiling || hit_floor {
-            self.ball.v[1] = -self.ball.v[1];
+            self.ball.v.y = -self.ball.v.y;
         }
 
-        let left_goal = self.ball.rect[0] + 2.0 * self.ball.rect[2] < 0.0;
-        let right_goal = self.ball.rect[0] - 2.0 * self.ball.rect[2] > 200.0; 
+        let left_goal = self.ball.rect.center.x + self.ball.rect.extent.y < 0.0;
+        let right_goal = self.ball.rect.center.x - self.ball.rect.extent.y > AREA_HEIGHT; 
 
         if left_goal {
             self.ball.reset();
@@ -144,18 +166,18 @@ impl <'a>App<'a> {
     fn control(&mut self, button: Button, pressed: bool) {
         if pressed {
             match button {
-                Button::Keyboard(Key::Up) => self.right.vy = -PADDLE_SPEED,
-                Button::Keyboard(Key::Down) => self.right.vy = PADDLE_SPEED,
-                Button::Keyboard(Key::A) => self.left.vy = -PADDLE_SPEED,
-                Button::Keyboard(Key::Z) => self.left.vy = PADDLE_SPEED,
+                Button::Keyboard(Key::Up) => self.right.v.y = -PADDLE_SPEED,
+                Button::Keyboard(Key::Down) => self.right.v.y = PADDLE_SPEED,
+                Button::Keyboard(Key::A) => self.left.v.y = -PADDLE_SPEED,
+                Button::Keyboard(Key::Z) => self.left.v.y = PADDLE_SPEED,
                 _ => ()
             }
         } else {
             match button {
-                Button::Keyboard(Key::Up) => self.right.vy = 0.0,
-                Button::Keyboard(Key::Down) => self.right.vy = 0.0,
-                Button::Keyboard(Key::A) => self.left.vy = 0.0,
-                Button::Keyboard(Key::Z) => self.left.vy = 0.0,
+                Button::Keyboard(Key::Up) => self.right.v.y = 0.0,
+                Button::Keyboard(Key::Down) => self.right.v.y = 0.0,
+                Button::Keyboard(Key::A) => self.left.v.y = 0.0,
+                Button::Keyboard(Key::Z) => self.left.v.y = 0.0,
                 _ => ()
             }
         }
@@ -165,23 +187,31 @@ impl <'a>App<'a> {
 fn main() {
     let opengl = OpenGL::_3_2;
 
-    // Create an Glutin window.
     let window = Window::new(
         opengl,
         WindowSettings::new(
             "rust-pong",
-            [200, 200]
+            [AREA_WIDTH as u32, AREA_HEIGHT as u32]
             )
         .exit_on_esc(true)
         );
 
-    if let Ok(glyph_cache) = GlyphCache::new(Path::new("ttf/DejaVuSans.ttf")) {
+    if let Ok(glyph_cache) = GlyphCache::new(Path::new(FONT_PATH)) {
+        let left = Paddle { 
+            rect: Rectangle::new([16.0, AREA_HEIGHT/2.0, 8.0, 24.0]), 
+            v: Vector2 { x: 0.0, y: 0.0 } 
+        };
+        let right = Paddle { 
+            rect: Rectangle::new([AREA_WIDTH - 16.0, AREA_HEIGHT/2.0, 8.0, 24.0]), 
+            v: Vector2 { x: 0.0, y: 0.0 } 
+        };
+
         let mut app = App {
             gl: GlGraphics::new(opengl),
             glyph_cache: glyph_cache,
             ball: Ball::new(8.0),
-            left: Paddle { rect: [16.0, 100.0, 8.0, 24.0], vy: 0.0 },
-            right: Paddle { rect: [184.0, 100.0, 8.0, 24.0], vy: 1.0 },
+            left: left,
+            right: right,
             left_score: 0,
             right_score: 0
         };
@@ -205,6 +235,8 @@ fn main() {
                 app.control(button, false);
             }
         }
+    } else {
+        println!("Could not load font at {}", FONT_PATH);
     }
 }
 
